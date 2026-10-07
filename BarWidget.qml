@@ -3,12 +3,16 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui as Ui
-import "KoDate.js" as KoDate
+import "ClockText.js" as ClockText
 
 Ui.BarWidget {
   id: root
   moduleName: "omarchy.clock"
   property date displayDate: clock.date
+  readonly property string language: ClockText.languageSetting(setting("language", "auto"))
+  readonly property string resolvedLanguage: ClockText.resolveLanguage(language, Qt.locale())
+  readonly property var strings: ClockText.strings(resolvedLanguage)
+  function tr(key, values) { return ClockText.format(strings[key], values) }
   readonly property string taskIndicator: ["none", "split", "total"].indexOf(setting("taskIndicator", "none")) >= 0 ? setting("taskIndicator", "none") : "none"
   readonly property string panelLayout: setting("panelLayout", "vertical") === "horizontal" ? "horizontal" : "vertical"
   readonly property string weekStart: setting("weekStart", "sunday") === "monday" ? "monday" : "sunday"
@@ -54,7 +58,8 @@ Ui.BarWidget {
     id: store
     panelOpen: root.opened
     taskIndicator: root.taskIndicator
-    today: KoDate.ymd(root.displayDate)
+    language: root.resolvedLanguage
+    today: ClockText.ymd(root.displayDate)
   }
   Loader {
     id: panelLoader
@@ -81,7 +86,7 @@ Ui.BarWidget {
     hasVisualContent: true
     fixedWidth: root.vertical ? root.barSize : labelRow.implicitWidth + Style.space(18)
     fixedHeight: root.vertical ? Style.bar.iconSlot * 3 + (root.showBadge ? Style.bar.iconSlot : 0) : -1
-    tooltipText: "달력과 ainote 할일"
+    tooltipText: root.strings.tooltip
     onPressed: function(b) {
       if (b === Qt.LeftButton) root.togglePanel()
       else if (b === Qt.MiddleButton) Quickshell.execDetached(["omarchy-menu-timezone"])
@@ -93,7 +98,7 @@ Ui.BarWidget {
       spacing: Style.space(7)
       Text {
         textFormat: Text.PlainText
-        text: KoDate.barLabel(root.displayDate)
+        text: ClockText.barLabel(root.displayDate, root.resolvedLanguage)
         font.family: button.fontFamily
         font.pixelSize: button.fontSize
         color: button.foreground
@@ -101,7 +106,7 @@ Ui.BarWidget {
       }
       Repeater {
         model: !root.showBadge ? [] : root.taskIndicator === "total" ? [String(store.todayPending + store.overdueCount)]
-          : ["할일 " + store.todayPending].concat(store.overdueCount > 0 ? ["밀림 " + store.overdueCount] : [])
+          : [root.tr("badgeToday", {count: store.todayPending})].concat(store.overdueCount > 0 ? [root.tr("badgeOverdue", {count: store.overdueCount})] : [])
         Rectangle {
           required property string modelData
           required property int index
@@ -127,7 +132,7 @@ Ui.BarWidget {
       textFormat: Text.PlainText
       anchors.centerIn: parent
       horizontalAlignment: Text.AlignHCenter
-      text: KoDate.verticalLabel(root.displayDate) + (root.showBadge ? "\n" + (store.todayPending + store.overdueCount) : "")
+      text: ClockText.verticalLabel(root.displayDate) + (root.showBadge ? "\n" + (store.todayPending + store.overdueCount) : "")
       font.family: button.fontFamily
       font.pixelSize: button.fontSize
       color: button.foreground

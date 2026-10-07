@@ -1,15 +1,18 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
-import "KoDate.js" as KoDate
+import "ClockText.js" as ClockText
 
 Item {
   id: root
   visible: false
+  property string language: ClockText.resolveLanguage("auto", Qt.locale())
+  readonly property var strings: ClockText.strings(language)
+  function tr(key, values) { return ClockText.format(strings[key], values) }
   property bool panelOpen: false
   property string taskIndicator: "none"
-  property string month: KoDate.ymd(new Date()).slice(0, 7)
-  property string today: KoDate.ymd(new Date())
+  property string month: ClockText.ymd(new Date()).slice(0, 7)
+  property string today: ClockText.ymd(new Date())
   property bool loggedIn: false
   property string email: ""
   property string connectionState: "disconnected"
@@ -31,13 +34,13 @@ Item {
   property int pollSeconds: 5
   property double now: Date.now()
   readonly property int remaining: Math.max(0, Math.ceil((loginDeadline - now) / 1000))
-  readonly property string countdown: Math.floor(remaining / 60) + ":" + KoDate.pad2(remaining % 60) + " 남음"
+  readonly property string countdown: tr("countdown", {time: Math.floor(remaining / 60) + ":" + ClockText.pad2(remaining % 60)})
   readonly property bool online: loggedIn && connectionState === "connected"
   readonly property bool badgeReady: online && syncedToday === today && cache[today.slice(0, 7)] !== undefined
   readonly property var tasks: cache[month] || []
   readonly property int todayPending: (cache[today.slice(0, 7)] || []).filter(function(t) { return t.date === root.today && !t.completed }).length
   readonly property int overdueCount: overdueTasks.filter(function(t) { return !t.completed && t.date < root.today }).length
-  readonly property string syncLabel: !lastSync ? "아직 동기화 전" : now - lastSync < 60000 ? "방금 동기화" : Math.floor((now - lastSync) / 60000) + "분 전 동기화"
+  readonly property string syncLabel: !lastSync ? strings.notSynced : now - lastSync < 60000 ? strings.syncedNow : tr("syncedMinutes", {count: Math.floor((now - lastSync) / 60000)})
   readonly property string helperPath: decodeURIComponent(String(Qt.resolvedUrl("bin/ainote-clock")).replace(/^file:\/\//, ""))
   signal added()
 
@@ -57,14 +60,9 @@ Item {
     return true
   }
   function errorMessage(code) {
-    var messages = {
-      not_logged_in: "ainote에 로그인해 주세요.", auth_expired: "로그인이 만료됐어요. 다시 연결해 주세요.",
-      offline: "오프라인 — 연결되면 다시 시도해 주세요.", key_limit: "ainote 설정 > MCP 에서 키를 하나 지워 주세요.",
-      denied: "브라우저에서 연결이 거절됐어요.", expired: "인증 시간이 끝났어요. 다시 연결해 주세요.",
-      bad_request: "입력한 할일을 확인해 주세요.", server_error: "ainote 요청을 처리하지 못했어요. 다시 시도해 주세요."
-    }
-    return messages[code] || messages.server_error
+    return strings["error_" + code] || strings.error_server_error
   }
+
   function fail(result) {
     errorCode = result.error || "server_error"
     if (errorCode === "auth_expired" || errorCode === "not_logged_in") {
@@ -75,7 +73,7 @@ Item {
     }
   }
   function notifyFailure(result) {
-    Quickshell.execDetached(["omarchy-notification-send", "ainote 시계", errorMessage(result.error)])
+    Quickshell.execDetached(["omarchy-notification-send", strings.notificationTitle, errorMessage(result.error)])
   }
   function checkStatus() {
     if (authBusy || connectionState === "waiting") return
@@ -125,8 +123,8 @@ Item {
       var key = months.shift()
       var parts = key.split("-").map(Number)
       // Cover both Sunday/Monday 42-cell grids, including adjacent-month dots.
-      var from = KoDate.ymd(new Date(parts[0], parts[1] - 1, -5, 12))
-      var end = KoDate.ymd(new Date(parts[0], parts[1] - 1, 42, 12))
+      var from = ClockText.ymd(new Date(parts[0], parts[1] - 1, -5, 12))
+      var end = ClockText.ymd(new Date(parts[0], parts[1] - 1, 42, 12))
       root.call("read", ["list", "--from", from, "--to", end], "", function(result) {
         if (!result.ok) { finish(result); return }
         results[key] = result.tasks || []

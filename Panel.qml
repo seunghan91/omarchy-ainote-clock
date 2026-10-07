@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import qs.Ui as Ui
-import "KoDate.js" as KoDate
+import "ClockText.js" as ClockText
 
 Ui.Panel {
   id: root
@@ -12,16 +12,28 @@ Ui.Panel {
   property var anchorItem: null
   property var hostWidget: null
   property var store: null
+  readonly property string language: hostWidget ? hostWidget.resolvedLanguage : ClockText.resolveLanguage("auto", Qt.locale())
+  readonly property var strings: ClockText.strings(language)
+  function tr(key, values) { return ClockText.format(strings[key], values) }
+  function offlineLabel() {
+    if (!store) return ""
+    var date = new Date(store.lastSync)
+    var detail = store.lastSync ? tr("lastSyncDetail", {
+      date: ClockText.dayHeader(ClockText.ymd(date), false, language),
+      time: ClockText.timeLabel(date.getHours() + ":" + date.getMinutes(), language)
+    }) : strings.noSyncData
+    return tr("offlineStatus", {detail: detail})
+  }
   property bool settingsView: false
   // On today's page: "all" shows overdue as a collapsible group above today's tasks.
   property string taskFilter: "all"
   property bool overdueOpen: false
   readonly property bool viewingToday: selectedDate === todayKey
   property date today: hostWidget ? hostWidget.displayDate : new Date()
-  readonly property string todayKey: KoDate.ymd(today)
+  readonly property string todayKey: ClockText.ymd(today)
   property date viewDate: new Date(today.getFullYear(), today.getMonth(), 1, 12)
   property string selectedDate: todayKey
-  readonly property string monthKey: KoDate.ymd(viewDate).slice(0, 7)
+  readonly property string monthKey: ClockText.ymd(viewDate).slice(0, 7)
   readonly property string weekStart: hostWidget ? hostWidget.weekStart : "sunday"
   readonly property bool horizontal: hostWidget && hostWidget.panelLayout === "horizontal" && !settingsView
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
@@ -39,9 +51,9 @@ Ui.Panel {
       return result
     }
     if (filter === "all" && overdue.length) {
-      result.push({heading: (overdueOpen ? "▾ " : "▸ ") + "밀린 할일 " + overdue.length, overdue: true, toggle: true})
+      result.push({heading: (overdueOpen ? "▾ " : "▸ ") + root.tr("overdueHeading", {count: overdue.length}), overdue: true, toggle: true})
       if (overdueOpen) overdue.forEach(function(t) { result.push({task: t, overdue: true}) })
-      result.push({heading: "오늘", overdue: false})
+      result.push({heading: root.strings.today, overdue: false})
     }
     dayTasks.forEach(function(t) { result.push({task: t, overdue: false}) })
     return result
@@ -65,7 +77,7 @@ Ui.Panel {
   function goToToday() { viewDate = new Date(today.getFullYear(), today.getMonth(), 1, 12); selectedDate = todayKey }
   function moveMonth(delta) {
     viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + delta, 1, 12)
-    selectedDate = KoDate.ymd(viewDate)
+    selectedDate = ClockText.ymd(viewDate)
   }
   function selectDay(date) {
     selectedDate = date
@@ -79,7 +91,7 @@ Ui.Panel {
   onMonthKeyChanged: syncMonth()
   onStoreChanged: syncMonth()
   onTodayKeyChanged: {
-    if (selectedDate === KoDate.ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12))) goToToday()
+    if (selectedDate === ClockText.ymd(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12))) goToToday()
   }
   // clear() also drops any input-method pre-edit; assigning "" can leave fcitx5 composing.
   Connections { target: root.store; function onAdded() { addInput.clear() } }
@@ -179,7 +191,7 @@ Ui.Panel {
                 Label {
                   width: parent.width - navigation.width - parent.spacing
                   anchors.verticalCenter: parent.verticalCenter
-                  text: KoDate.monthTitle(root.viewDate.getFullYear(), root.viewDate.getMonth())
+                  text: ClockText.monthTitle(root.viewDate.getFullYear(), root.viewDate.getMonth(), root.language)
                   font.pixelSize: Style.font.heading
                   font.bold: true
                 }
@@ -187,7 +199,7 @@ Ui.Panel {
                   id: navigation
                   spacing: Style.space(3)
                   Action { text: "‹"; onClicked: root.moveMonth(-1) }
-                  Action { text: "오늘"; onClicked: root.goToToday() }
+                  Action { text: root.strings.today; onClicked: root.goToToday() }
                   Action { text: "›"; onClicked: root.moveMonth(1) }
                 }
               }
@@ -195,7 +207,7 @@ Ui.Panel {
                 width: parent.width
                 columns: 7
                 Repeater {
-                  model: KoDate.weekdayLabels(root.weekStart)
+                  model: ClockText.weekdayLabels(root.weekStart, root.language)
                   Label {
                     required property string modelData
                     required property int index
@@ -209,7 +221,7 @@ Ui.Panel {
                   }
                 }
                 Repeater {
-                  model: KoDate.monthGrid(root.viewDate.getFullYear(), root.viewDate.getMonth(), root.weekStart)
+                  model: ClockText.monthGrid(root.viewDate.getFullYear(), root.viewDate.getMonth(), root.weekStart)
                   Item {
                     id: dayCell
                     required property var modelData
@@ -219,7 +231,7 @@ Ui.Panel {
                     readonly property bool isToday: modelData.date === root.todayKey
                     activeFocusOnTab: true
                     Accessible.role: Accessible.Button
-                    Accessible.name: KoDate.dayHeader(modelData.date, isToday)
+                    Accessible.name: ClockText.dayHeader(modelData.date, isToday, root.language)
                     Keys.onReturnPressed: root.selectDay(modelData.date)
                     Keys.onSpacePressed: root.selectDay(modelData.date)
                     Rectangle {
@@ -262,49 +274,49 @@ Ui.Panel {
                 visible: root.store && (root.store.connectionState === "offline" || root.store.errorCode !== "")
                 color: root.sundayColor
                 text: !root.store ? "" : root.store.connectionState === "offline"
-                  ? "오프라인 — " + (root.store.lastSync ? "마지막 동기화 " + KoDate.dayHeader(KoDate.ymd(new Date(root.store.lastSync)), false) + " " + KoDate.timeLabel(new Date(root.store.lastSync).getHours() + ":" + new Date(root.store.lastSync).getMinutes()) + " 기준." : "아직 동기화한 데이터가 없어요.") + "\n완료·추가는 연결되면 다시 시도합니다."
+                  ? root.offlineLabel()
                   : root.store.errorMessage(root.store.errorCode)
               }
-              Action { visible: root.store && root.store.connectionState === "offline"; text: "다시 시도"; enabled: root.store && !root.store.refreshing; onClicked: root.store.checkStatus() }
+              Action { visible: root.store && root.store.connectionState === "offline"; text: root.strings.retry; enabled: root.store && !root.store.refreshing; onClicked: root.store.checkStatus() }
               Column {
                 visible: root.store && root.store.connectionState === "waiting"
                 width: parent.width
                 spacing: Style.space(12)
-                Label { width: parent.width; text: "브라우저에서 아래 코드를 확인하고\n승인하면 할일이 여기에 뜹니다."; horizontalAlignment: Text.AlignHCenter }
+                Label { width: parent.width; text: root.strings.approvalInstructions; horizontalAlignment: Text.AlignHCenter }
                 Label { width: parent.width; text: root.store ? root.store.userCode : ""; horizontalAlignment: Text.AlignHCenter; font.pixelSize: Style.font.displayLarge; font.bold: true }
                 Row {
                   anchors.horizontalCenter: parent.horizontalCenter; spacing: Style.space(8)
-                  Action { text: "브라우저 열기"; onClicked: root.store.openBrowser() }
-                  Action { text: "취소"; enabled: root.store && !root.store.cancelRequested; onClicked: root.store.cancelLogin() }
+                  Action { text: root.strings.openBrowser; onClicked: root.store.openBrowser() }
+                  Action { text: root.strings.cancel; enabled: root.store && !root.store.cancelRequested; onClicked: root.store.cancelLogin() }
                 }
-                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "승인 기다리는 중… " + (root.store ? root.store.countdown : "") }
+                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.tr("waitingApproval", {countdown: root.store ? root.store.countdown : ""}) }
               }
               Column {
                 visible: root.store && !root.store.loggedIn && root.store.connectionState !== "waiting"
                 width: parent.width; spacing: Style.space(12)
-                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.store && root.store.connectionState === "auth_expired" ? "로그인이 만료됐어요. 다시 연결해 주세요." : "ainote 할일을 달력에 함께 볼 수 있어요." }
+                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.store && root.store.connectionState === "auth_expired" ? root.strings.error_auth_expired : root.strings.loginIntro }
                 Action {
                   anchors.horizontalCenter: parent.horizontalCenter
-                  text: root.store && root.store.connectionState === "auth_expired" ? "다시 연결" : "ainote 로그인"
+                  text: root.store && root.store.connectionState === "auth_expired" ? root.strings.reconnect : root.strings.login
                   enabled: root.store && !root.store.authBusy && !root.store.mutating && !root.store.refreshing
                   onClicked: root.store.startLogin()
                 }
-                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "연결하지 않아도 시계·달력은 그대로 씁니다."; opacity: 0.65 }
+                Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.strings.noLoginNeeded; opacity: 0.65 }
               }
               Column {
                 visible: root.store && root.store.loggedIn && root.store.connectionState !== "waiting"
                 width: parent.width; spacing: Style.space(10)
                 Row {
                   width: parent.width
-                  Label { width: parent.width - remainingLabel.implicitWidth; text: KoDate.dayHeader(root.selectedDate, root.selectedDate === root.todayKey); font.bold: true; font.pixelSize: Style.font.title }
-                  Label { id: remainingLabel; text: "남은 " + root.dayTasks.filter(function(t) { return !t.completed }).length; opacity: 0.6; font.pixelSize: Style.font.bodySmall }
+                  Label { width: parent.width - remainingLabel.implicitWidth; text: ClockText.dayHeader(root.selectedDate, root.selectedDate === root.todayKey, root.language); font.bold: true; font.pixelSize: Style.font.title }
+                  Label { id: remainingLabel; text: root.tr("remainingCount", {count: root.dayTasks.filter(function(t) { return !t.completed }).length}); opacity: 0.6; font.pixelSize: Style.font.bodySmall }
                 }
                 Flow {
                   visible: root.viewingToday
                   width: parent.width; spacing: Style.space(6)
-                  Action { text: "전체"; selected: root.taskFilter === "all"; onClicked: root.taskFilter = "all" }
-                  Action { text: "오늘 " + root.dayTasks.filter(function(t) { return !t.completed }).length; selected: root.taskFilter === "today"; onClicked: root.taskFilter = "today" }
-                  Action { text: "밀린 " + root.overdue.length; selected: root.taskFilter === "overdue"; onClicked: root.taskFilter = "overdue" }
+                  Action { text: root.strings.all; selected: root.taskFilter === "all"; onClicked: root.taskFilter = "all" }
+                  Action { text: root.tr("todayCount", {count: root.dayTasks.filter(function(t) { return !t.completed }).length}); selected: root.taskFilter === "today"; onClicked: root.taskFilter = "today" }
+                  Action { text: root.tr("overdueCount", {count: root.overdue.length}); selected: root.taskFilter === "overdue"; onClicked: root.taskFilter = "overdue" }
                 }
                 Repeater {
                   model: root.rows
@@ -348,7 +360,7 @@ Ui.Panel {
                     Label {
                       id: taskMeta
                       anchors.right: parent.right; y: Style.space(7)
-                      text: !taskRow.modelData.task ? "" : taskRow.modelData.overdue ? KoDate.shortDate(taskRow.modelData.task.date) : taskRow.modelData.task.time ? KoDate.timeLabel(taskRow.modelData.task.time) : ""
+                      text: !taskRow.modelData.task ? "" : taskRow.modelData.overdue ? ClockText.shortDate(taskRow.modelData.task.date) : taskRow.modelData.task.time ? ClockText.timeLabel(taskRow.modelData.task.time, root.language) : ""
                       font.pixelSize: Style.font.bodySmall
                       color: taskRow.modelData.overdue ? root.sundayColor : root.contentForeground
                       opacity: 0.7
@@ -358,9 +370,9 @@ Ui.Panel {
                 Label {
                   visible: root.viewingToday && root.taskFilter === "overdue" ? root.overdue.length === 0 : root.dayTasks.length === 0
                   width: parent.width; opacity: 0.6
-                  text: root.store && root.store.refreshing ? "할일을 불러오는 중…"
-                    : root.viewingToday && root.taskFilter === "overdue" ? "밀린 할일이 없습니다."
-                    : root.viewingToday ? "오늘 할일이 없습니다." : "이날 할일이 없습니다."
+                  text: root.store && root.store.refreshing ? root.strings.loadingTasks
+                    : root.viewingToday && root.taskFilter === "overdue" ? root.strings.emptyOverdue
+                    : root.viewingToday ? root.strings.emptyToday : root.strings.emptyDay
                 }
                 Rectangle {
                   width: parent.width; height: Style.space(42); radius: Style.space(7)
@@ -383,7 +395,7 @@ Ui.Panel {
                     Label {
                       anchors.fill: parent
                       visible: addInput.text === "" && addInput.preeditText === ""
-                      text: Number(root.selectedDate.slice(5, 7)) + "월 " + Number(root.selectedDate.slice(8)) + "일에 할일 추가"
+                      text: ClockText.addPlaceholder(root.selectedDate, root.language)
                       opacity: 0.5
                     }
                   }
@@ -397,14 +409,15 @@ Ui.Panel {
             spacing: Style.space(6)
             Row {
               width: parent.width
-              Label { width: parent.width - backButton.width; text: "설정"; font.pixelSize: Style.font.heading; font.bold: true }
-              Action { id: backButton; text: "← 달력"; onClicked: root.settingsView = false }
+              Label { width: parent.width - backButton.width; text: root.strings.settings; font.pixelSize: Style.font.heading; font.bold: true }
+              Action { id: backButton; text: root.strings.backCalendar; onClicked: root.settingsView = false }
             }
             Repeater {
               model: [
-                {key: "taskIndicator", title: "바에 할일 표시", options: [{value: "none", title: "표시 안 함", description: "시계만 (기본값)"}, {value: "split", title: "남은 할일 · 밀린 할일", description: "할일 2 · 밀림 2 처럼 따로"}, {value: "total", title: "합계 숫자 하나", description: "남은 것과 밀린 것을 합쳐서"}]},
-                {key: "panelLayout", title: "달력 패널 모양", options: [{value: "vertical", title: "세로", description: "달력 위, 할일 아래 (기본값)"}, {value: "horizontal", title: "가로 2단", description: "달력 왼쪽, 할일 오른쪽"}]},
-                {key: "weekStart", title: "주 시작", options: [{value: "sunday", title: "일요일", description: "기본값"}, {value: "monday", title: "월요일", description: ""}]}
+                {key: "language", title: root.strings.languageTitle, options: [{value: "auto", title: root.strings.languageAuto, description: root.strings.languageAutoDescription}, {value: "en", title: root.strings.languageEn, description: ""}, {value: "ko", title: root.strings.languageKo, description: ""}, {value: "zh-Hans", title: root.strings.languageZhHans, description: ""}, {value: "zh-Hant", title: root.strings.languageZhHant, description: ""}]},
+                {key: "taskIndicator", title: root.strings.indicatorTitle, options: [{value: "none", title: root.strings.indicatorNone, description: root.strings.indicatorNoneDescription}, {value: "split", title: root.strings.indicatorSplit, description: root.strings.indicatorSplitDescription}, {value: "total", title: root.strings.indicatorTotal, description: root.strings.indicatorTotalDescription}]},
+                {key: "panelLayout", title: root.strings.layoutTitle, options: [{value: "vertical", title: root.strings.layoutVertical, description: root.strings.layoutVerticalDescription}, {value: "horizontal", title: root.strings.layoutHorizontal, description: root.strings.layoutHorizontalDescription}]},
+                {key: "weekStart", title: root.strings.weekStartTitle, options: [{value: "sunday", title: root.strings.sunday, description: root.strings.defaultDescription}, {value: "monday", title: root.strings.monday, description: ""}]}
               ]
               Column {
                 id: group
@@ -423,21 +436,21 @@ Ui.Panel {
                 }
               }
             }
-            Label { text: "ainote"; topPadding: Style.space(10); font.bold: true }
+            Label { text: root.strings.product; topPadding: Style.space(10); font.bold: true }
             Row {
               width: parent.width
-              Label { width: parent.width - logoutButton.width; text: root.store && root.store.loggedIn ? root.store.email : "연결 안 됨" }
-              Action { id: logoutButton; visible: root.store && root.store.loggedIn; text: "로그아웃"; enabled: root.store && !root.store.authBusy && !root.store.mutating && !root.store.refreshing; onClicked: root.store.logout() }
+              Label { width: parent.width - logoutButton.width; text: root.store && root.store.loggedIn ? root.store.email : root.strings.disconnected }
+              Action { id: logoutButton; visible: root.store && root.store.loggedIn; text: root.strings.logout; enabled: root.store && !root.store.authBusy && !root.store.mutating && !root.store.refreshing; onClicked: root.store.logout() }
             }
-            Label { width: parent.width; text: "바뀐 값은 바로 적용·저장"; opacity: 0.6; font.pixelSize: Style.font.bodySmall }
+            Label { width: parent.width; text: root.strings.savedImmediately; opacity: 0.6; font.pixelSize: Style.font.bodySmall }
           }
           Rectangle { width: parent.width; height: 1; color: Util.alpha(root.contentForeground, 0.12) }
           Flow {
             width: parent.width
             spacing: Style.space(8)
-            Label { text: "ainote · " + (root.store ? root.store.syncLabel : "아직 동기화 전"); height: Style.space(30); verticalAlignment: Text.AlignVCenter; font.pixelSize: Style.font.bodySmall; opacity: 0.6 }
-            Action { text: root.settingsView ? "달력" : "설정"; onClicked: root.settingsView = !root.settingsView }
-            Action { text: "ainote 에서 열기 ↗"; onClicked: Quickshell.execDetached(["xdg-open", "https://app.ainote.dev"]) }
+            Label { text: root.tr("footer", {sync: root.store ? root.store.syncLabel : root.strings.notSynced}); height: Style.space(30); verticalAlignment: Text.AlignVCenter; font.pixelSize: Style.font.bodySmall; opacity: 0.6 }
+            Action { text: root.settingsView ? root.strings.calendar : root.strings.settings; onClicked: root.settingsView = !root.settingsView }
+            Action { text: root.strings.openAINote; onClicked: Quickshell.execDetached(["xdg-open", "https://app.ainote.dev"]) }
           }
         }
       }
