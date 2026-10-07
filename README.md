@@ -4,11 +4,26 @@ Apple-style date and time, a monthly calendar, and your AI Note tasks in the Oma
 Four UI languages: English, Korean, Simplified Chinese, and Traditional Chinese, detected automatically with a Language setting to override it.
 Complete or add tasks after signing in; the clock and calendar also work without an account.
 
+![AI Note Clock](preview.png)
+
+### Install
+
 ```bash
-git clone https://github.com/seunghan91/omarchy-ainote-clock.git
-cd omarchy-ainote-clock
-./install.sh
+omarchy plugin add https://github.com/seunghan91/omarchy-ainote-clock --enable --yes
 ```
+
+It takes the built-in clock's place in the bar (`omarchy.clonedFrom: omarchy.clock`), so the clock shortcut opens it too.
+Omarchy does not yet move `bar.centerAnchor` to a replacement clock ([#7868](https://github.com/omacom/omarchy/issues/7868)); to keep the clock pinned dead-centre, install from a checkout with `./install.sh`, which moves the anchor and puts it back on removal.
+
+Update with `omarchy plugin update io.github.seunghan91.ainote-clock`, then `omarchy-restart-shell`.
+Remove with `omarchy plugin remove io.github.seunghan91.ainote-clock` (or `./install.sh --uninstall`); the built-in clock comes back in the same place.
+
+### Dependencies, network and data
+
+- Stock Omarchy only: `bash`, `curl`, `jq`, `openssl`, `flock`, `xdg-open`. No extra packages, no sudo.
+- Network: only `https://api.ainote.dev` (tasks and sign-in) and `https://app.ainote.dev` (opened in your browser to approve sign-in).
+- Sign-in uses AI Note's device authorization with PKCE. Tokens live only in `~/.config/ainote-clock/credentials.json` (mode 0600) and are never put on a command line or in `shell.json`. Settings are the widget's inline entry in `shell.json`.
+- An AI Note account is needed for tasks; the clock and calendar work without one.
 
 ## 소개
 
@@ -95,6 +110,6 @@ node tests/kodate.test.mjs               # 날짜 표기
 bash tests/normalize.test.sh             # 마감일 날짜 분류
 ```
 
-## 크레딧
+## 라이선스·크레딧
 
-달력 패널 구조는 Omarchy 기본 시계(`shell/plugins/panels/clock`, MIT)를 바탕으로 했다.
+MIT (`LICENSE`). 달력 패널 구조는 Omarchy 기본 시계(`shell/plugins/panels/clock`, MIT)를 바탕으로 했다.
