@@ -1,8 +1,12 @@
 # AI Note Clock (Omarchy)
 
-Apple-style date and time, a monthly calendar, and your AI Note tasks in the Omarchy bar.
-Four UI languages: English, Korean, Simplified Chinese, and Traditional Chinese, detected automatically with a Language setting to override it.
-Complete or add tasks after signing in; the clock and calendar also work without an account.
+Apple-style date and time, a monthly calendar, and your [AI Note](https://app.ainote.dev) tasks in the Omarchy bar.
+
+AI Note is a to-do and calendar service on the web ([app.ainote.dev](https://app.ainote.dev)) and on phones ([iOS](https://apps.apple.com/app/id6747735383), [Android](https://play.google.com/store/apps/details?id=com.dcodelabs.ainote)). This plugin signs in to the same account, so a task you add on your phone shows up on the calendar here, and a task you check off or add from the bar shows up on the web and in the apps.
+
+- Today's and overdue tasks, a dot on every day that has tasks, check to complete, type to add
+- Four UI languages: English, Korean, Simplified Chinese, Traditional Chinese (auto-detected, or set `language`)
+- The clock and calendar work without an account; sign in from the panel when you want your tasks
 
 ![AI Note Clock](preview.png)
 
@@ -29,6 +33,9 @@ Remove with `omarchy plugin remove io.github.seunghan91.ainote-clock` (or `./ins
 
 Omarchy 상단 바 가운데 시계를 애플식 한국어·영어·중국어(간체·번체) 표기로 바꾸고,
 달력 패널에서 AI Note 할일을 보고·완료하고·추가하는 셸 플러그인.
+
+AI Note 웹(app.ainote.dev)과 iOS·Android 앱과 같은 계정을 쓴다.
+휴대폰에서 추가한 할일이 바탕화면 달력에 뜨고, 여기서 체크하거나 추가한 할일은 웹과 앱에 바로 반영된다.
 
 ![AI Note Clock 데모 — 바 라벨, 한국어 달력과 할일, 달 이동, 할일 배지, 가로 2단 패널](docs/demo.gif)
 
