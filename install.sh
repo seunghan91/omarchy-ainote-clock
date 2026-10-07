@@ -76,7 +76,7 @@ install_plugin() {
   stage=$(mktemp -d "$parent/.ainote-clock-stage.XXXXXX")
   backup="$parent/.ainote-clock-previous"
   trap 'rm -rf "$stage"' RETURN
-  tar -C "$SRC_DIR" --exclude='./.git' --exclude='./.mockups' --exclude='./.planning' --exclude='./tests' -cf - . |
+  tar -C "$SRC_DIR" --exclude='./.git' --exclude='./.mockups' --exclude='./.planning' --exclude='./tests' --exclude='./docs' -cf - . |
     tar -C "$stage" -xf -
   chmod 755 "$stage/bin/ainote-clock"
   jq -e --arg id "$ID" '.id == $id' "$stage/manifest.json" >/dev/null || fail "staged manifest is not $ID"
