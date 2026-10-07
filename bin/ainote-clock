@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+# No shell tracing or raw upstream diagnostics: both could reveal credentials.
+set +x
+exec 2>/dev/null
+BASE=${AINOTE_API_URL:-https://api.ainote.dev}
+BASE=${BASE%/}
+DIR=${XDG_CONFIG_HOME:-$HOME/.config}/ainote-clock
+CRED=$DIR/credentials.json
+PENDING=$DIR/pending.json
+USER_AGENT="ainote-clock/0.1 (Omarchy)"
+LIB=$(cd "$(dirname "$0")" && pwd)
+WORK=
+SENT=0
+finish() {
+  local rc=$?
+  if [[ $SENT == 0 ]]; then
+    printf '%s\n' '{"ok":false,"error":"server_error","message":"요청을 처리하지 못했습니다."}'
+    rc=1
+  fi
+  if [[ -n $WORK ]]; then rm -rf "$WORK"; fi
+  trap - EXIT
+  exit "$rc"
+}
+trap finish EXIT
+fail() {
+  jq -cn --arg error "$1" --arg message "${2:-요청을 처리하지 못했습니다.}" '{ok:false,error:$error,message:$message}'
+  SENT=1
+  exit 1
+}
+emit() { printf '%s\n' "$1"; SENT=1; }
+mkdir -p "$DIR"
+chmod 700 "$DIR"
+
+# Serialize credential operations, including logout/login, as well as rotation.
+# Re-read credentials only AFTER locking, so queued processes use rotated tokens.
+# Arch uses flock. macOS has no flock utility; fcntl is the stdlib equivalent.
+if [[ ${AINOTE_CLOCK_LOCK_HELD:-} != "$DIR" ]]; then
+  exec 9>"$DIR/credentials.lock"
+  chmod 600 "$DIR/credentials.lock"
+  if command -v flock >/dev/null; then
+    flock -x 9
+  else
+    export AINOTE_CLOCK_LOCK_HELD=$DIR
+    exec python3 -c 'import fcntl, os, sys
+fcntl.flock(9, fcntl.LOCK_EX)
+os.set_inheritable(9, True)
+os.execv(sys.argv[1], sys.argv[1:])' "$LIB/ainote-clock" "$@"
+  fi
+fi
+unset AINOTE_CLOCK_LOCK_HELD
+# A SIGKILLed run can leave a request dir behind (it may hold a poll response).
+find "$DIR" -maxdepth 1 -name '.request.*' -mmin +10 -exec rm -rf {} + 2>/dev/null || true
+WORK=$(mktemp -d "$DIR/.request.XXXXXX")
+for f in "$CRED" "$PENDING"; do [[ ! -f $f ]] || chmod 600 "$f"; done
+
+atomic() {
+  local tmp
+  tmp=$(mktemp "$DIR/.atomic.XXXXXX")
+  if ! cat >"$tmp"; then rm -f "$tmp"; return 1; fi
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$1"
+}
+request() {
+  local method=$1 path=$2 auth=${3:-none} body=${4:-/dev/null}
+  printf '%s\n' 'Content-Type: application/json' >"$WORK/headers"
+  case $auth in
+    bearer) jq -r '"Authorization: Bearer " + .access_token' "$CRED" >>"$WORK/headers" ;;
+    mcp) jq -r '"Authorization: McpKey " + .mcp_key' "$CRED" >>"$WORK/headers" ;;
+  esac
+  # ainote's Rack::Attack 403s any User-Agent containing "curl"; "ainote" is allowlisted.
+  HTTP=$(curl --silent --max-time 15 --user-agent "$USER_AGENT" --request "$method" \
+    -H "@$WORK/headers" --data-binary @- --output "$WORK/response" \
+    --write-out '%{http_code}' "$BASE$path" <"$body") || return 1
+}
+check_http() {
+  if [[ $HTTP == 409 ]] && jq -e '.. | objects | select(.code? == "MCP_KEY_LIMIT")' "$WORK/response" >/dev/null; then
+    fail key_limit 'MCP 키 한도에 도달했습니다.'
+  fi
+  case $HTTP in
+    2??) ;;
+    401) fail auth_expired '다시 로그인해 주세요.' ;;
+    403) fail denied '요청이 거부되었습니다.' ;;
+    400|404|422) fail bad_request '요청 값을 확인해 주세요.' ;;
+    *) fail server_error ;;
+  esac
+  jq -e 'type == "object" and .success != false' "$WORK/response" >/dev/null || fail server_error
+}
+valid_creds() {
+  [[ -f $CRED ]] && jq -e '
+    def secret: type == "string" and length > 0 and (test("[\\r\\n]") | not);
+    (.access_token | secret) and (.refresh_token | secret) and (.mcp_key | secret)
+  ' "$CRED" >/dev/null
+}
+save_bundle() {
+  # Refresh is ENVELOPED (auth_token_controller.rb:97); retain mcp_key/scope.
+  # Rails sends expires_at with a zone offset ("...+09:00"); fromdateiso8601 only takes "Z".
+  jq -ce --slurpfile old "$1" '
+    def iso_epoch: capture("^(?<b>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\\.[0-9]+)?(?<z>Z|(?<s>[+-])(?<h>[0-9]{2}):?(?<m>[0-9]{2}))$")
+      | (.b + "Z" | fromdateiso8601)
+        - (if .z == "Z" then 0 else (if .s == "+" then 1 else -1 end) * ((.h | tonumber) * 3600 + (.m | tonumber) * 60) end);
+    select(.success != false) |
+    .data as $d | ($old[0] + ($d | {access_token,refresh_token} ) +
+      (if $d.mcp_key then {mcp_key:$d.mcp_key} else {} end) +
+      (if $d.user then {user:$d.user} else {} end) +
+      (if $d.scope then {scope:$d.scope} else {} end)) |
+    .expires_at = (if ($d.expires_at | type) == "string" then
+       ($d.expires_at | iso_epoch)
+       elif ($d.expires_at | type) == "number" then $d.expires_at
+       else now + $d.expires_in end) |
+    select((.access_token | type == "string" and length > 0 and (test("[\\r\\n]")|not)) and
+      (.refresh_token | type == "string" and length > 0 and (test("[\\r\\n]")|not)) and
+      (.mcp_key | type == "string" and length > 0 and (test("[\\r\\n]")|not)) and (.expires_at > now))
+  ' "$WORK/response" >"$WORK/bundle" || return 1
+  atomic "$CRED" <"$WORK/bundle"
+}
+refresh() {
+  jq -c '{refresh_token}' "$CRED" >"$WORK/refresh"
+  # Only a 401/403 means the login is gone; anything else keeps the cached tasks.
+  request POST /api/auth/token/refresh none "$WORK/refresh" || fail offline '서버에 연결할 수 없습니다.'
+  case $HTTP in
+    2??) ;;
+    401 | 403) fail auth_expired '다시 로그인해 주세요.' ;;
+    *) fail server_error '서버 오류로 인증을 갱신하지 못했습니다.' ;;
+  esac
+  save_bundle "$CRED" || fail auth_expired '인증 갱신에 실패했습니다.'
+}
+authed() {
+  valid_creds || fail not_logged_in '로그인이 필요합니다.'
+  if ! jq -e '(.expires_at | if type == "string" then fromdateiso8601 else . end) > now + 60' "$CRED" >/dev/null; then
+    refresh
+  fi
+  request "$@" || fail offline '서버에 연결할 수 없습니다.'
+  if [[ $HTTP == 401 ]]; then
+    refresh
+    request "$@" || fail offline '서버에 연결할 수 없습니다.'
+  fi
+  check_http
+}
+date_valid() {
+  jq -en --arg d "$1" '$d | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")) |
+    . == (. + "T00:00:00Z" | fromdateiso8601 | strftime("%Y-%m-%d"))' >/dev/null
+}
+date_shift() {
+  jq -rn --arg d "$1" --argjson n "$2" '$d + "T00:00:00Z" | fromdateiso8601 | . + $n * 86400 | strftime("%Y-%m-%dT%H:%M:%SZ") | @uri'
+}
+tasks() {
+  local mode=$1 from=$2 to=$3 page query more
+  query="per_page=100&end_date=$(date_shift "$to" 1)"
+  if [[ $mode == list ]]; then query="$query&start_date=$(date_shift "$from" -1)"
+  else query="$query&is_completed=false"; fi
+  printf '[]' >"$WORK/tasks"
+  for ((page=1; page<=10; page++)); do
+    authed GET "/api/tasks?$query&page=$page" bearer
+    jq -e '.data | type == "array"' "$WORK/response" >/dev/null || fail server_error
+    jq -c -L "$LIB" --arg mode "$mode" --arg from "$from" --arg to "$to" \
+      'include "task-normalize"; [.data[] | normalized |
+        select(if $mode == "list" then .date >= $from and .date <= $to
+               else .date < $to and (.completed | not) end)]' "$WORK/response" >"$WORK/page"
+    jq -sc '.[0] + .[1] | unique_by(.id)' "$WORK/tasks" "$WORK/page" >"$WORK/merged"
+    mv "$WORK/merged" "$WORK/tasks"
+    more=$(jq -r '.meta.has_more == true' "$WORK/response")
+    if [[ $mode == overdue ]] && jq -e 'length >= 100' "$WORK/tasks" >/dev/null; then break; fi
+    [[ $more == true ]] || break
+    # Do not claim a complete list when the required safety cap truncates it.
+    [[ $page != 10 ]] || fail server_error '조회 범위가 너무 큽니다. 날짜 범위를 줄여 주세요.'
+  done
+  emit "$(jq -c --arg mode "$mode" '{ok:true,tasks:(sort_by(.date,.time,.id) | if $mode == "overdue" then .[:100] else . end)}' "$WORK/tasks")"
+}
+
+cmd=${1:-}; [[ $# == 0 ]] || shift
+case $cmd in
+  status)
+    [[ $# == 0 ]] || fail bad_request
+    if valid_creds; then emit "$(jq -c '{ok:true,loggedIn:true,email:(.user.email // null)}' "$CRED")"
+    else emit '{"ok":true,"loggedIn":false,"email":null}'; fi ;;
+  login-start)
+    [[ $# == 0 ]] || fail bad_request
+    openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n' >"$WORK/verifier"
+    openssl dgst -sha256 -binary <"$WORK/verifier" | openssl base64 -A | tr '+/' '-_' | tr -d '=' >"$WORK/challenge"
+    jq -cn --rawfile challenge "$WORK/challenge" '{client_name:"Omarchy ainote clock",scopes:["read","write","mcp"],code_challenge:$challenge,code_challenge_method:"S256"}' >"$WORK/body"
+    request POST /api/auth/cli/device/start none "$WORK/body" || fail offline
+    check_http
+    jq -e '.data | (.device_code | type == "string" and length > 0) and
+      (.user_code | type == "string") and (.verification_uri | type == "string") and
+      (.expires_in | type == "number" and . > 0) and (.interval | type == "number" and . > 0)' "$WORK/response" >/dev/null || fail server_error
+    jq -c --rawfile verifier "$WORK/verifier" '.data | {device_code,code_verifier:$verifier,interval,deadline:(now + .expires_in)}' "$WORK/response" | atomic "$PENDING"
+    emit "$(jq -c '.data | {ok:true,userCode:.user_code,verificationUri:.verification_uri,verificationUriComplete:(.verification_uri_complete // .verification_uri),expiresIn:.expires_in,interval}' "$WORK/response")" ;;
+  login-poll)
+    [[ $# == 0 ]] || fail bad_request
+    [[ -f $PENDING ]] || fail expired '로그인 요청이 만료되었습니다.'
+    if ! jq -e '.deadline > now' "$PENDING" >/dev/null; then rm -f "$PENDING"; fail expired; fi
+    jq -c '{device_code,code_verifier}' "$PENDING" >"$WORK/body"
+    request POST /api/auth/cli/device/poll none "$WORK/body" || fail offline
+    check_http
+    state=$(jq -r '.data.error // .data.status // "unknown"' "$WORK/response")
+    case $state in
+      authorization_pending) state=pending ;;
+      slow_down)
+        jq -c --slurpfile response "$WORK/response" '.interval = ([.interval + 5, ($response[0].data.interval // 0)] | max)' "$PENDING" | atomic "$PENDING" ;;
+      complete)
+        printf '{}' >"$WORK/empty"
+        save_bundle "$WORK/empty" || fail server_error
+        valid_creds || fail server_error ;;
+      access_denied) rm -f "$PENDING"; fail denied '로그인이 거부되었습니다.' ;;
+      expired_token) rm -f "$PENDING"; fail expired '로그인 요청이 만료되었습니다.' ;;
+      invalid_grant) rm -f "$PENDING"; fail denied '로그인 검증에 실패했습니다.' ;;
+      *) fail server_error ;;
+    esac
+    result=$(jq -c --arg state "$state" '{ok:true,state:$state,interval}' "$PENDING")
+    [[ $state != complete ]] || rm -f "$PENDING"
+    emit "$result" ;;
+  login-cancel)
+    [[ $# == 0 ]] || fail bad_request
+    if [[ -f $PENDING ]]; then
+      jq -c '{device_code}' "$PENDING" >"$WORK/body"
+      request POST /api/auth/cli/device/cancel none "$WORK/body" || true
+      rm -f "$PENDING"
+    fi
+    emit '{"ok":true}' ;;
+  logout)
+    [[ $# == 0 ]] || fail bad_request
+    if valid_creds; then
+      jq -c '{token:.refresh_token,token_type_hint:"refresh_token"}' "$CRED" >"$WORK/body"
+      request POST /api/auth/token/revoke bearer "$WORK/body" || true
+    fi
+    rm -f "$CRED" "$PENDING"
+    emit '{"ok":true}' ;;
+  list|overdue|add)
+    from='' to='' date_value=''
+    while [[ $# -gt 0 ]]; do
+      [[ $# -ge 2 ]] || fail bad_request
+      case "$cmd:$1" in
+        list:--from) [[ -z $from ]] || fail bad_request; from=$2 ;;
+        list:--to|overdue:--before) [[ -z $to ]] || fail bad_request; to=$2 ;;
+        add:--date) [[ -z $date_value ]] || fail bad_request; date_value=$2 ;;
+        *) fail bad_request ;;
+      esac
+      shift 2
+    done
+    if [[ $cmd == add ]]; then
+      date_valid "$date_value" || fail bad_request '날짜를 확인해 주세요.'
+      cat >"$WORK/content"
+      # REST task_params permits these at top level (tasks_controller.rb:1551),
+      # then DateTime.iso8601 parses due_date (1504). Web parse_date_field
+      # (web/tasks_controller.rb:1026-1027) stores Date.parse(...).to_datetime:
+      # UTC midnight, NOT local midnight. Send that anchor explicitly + skip_time.
+      jq -cen --rawfile content "$WORK/content" --arg date "$date_value" '
+        ($content | gsub("^\\s+|\\s+$";"")) as $s |
+        select(($s | length) >= 1 and ($s | length) <= 500) |
+        {content:$s,due_date:($date + "T00:00:00Z"),due_time:null,skip_time:true,is_all_day:false}' >"$WORK/body" || fail bad_request '내용은 1~500자로 입력해 주세요.'
+      authed POST /api/tasks bearer "$WORK/body"
+      result=$(jq -ce -L "$LIB" 'include "task-normalize"; {ok:true,task:(.data | normalized)}' "$WORK/response")
+      emit "$result"
+    else
+      date_valid "$to" || fail bad_request
+      if [[ $cmd == list ]]; then date_valid "$from" && [[ $from < $to || $from == "$to" ]] || fail bad_request; fi
+      tasks "$cmd" "$from" "$to"
+    fi ;;
+  done|undone)
+    [[ $# == 1 && $1 =~ ^[0-9a-fA-F-]{1,64}$ ]] || fail bad_request
+    jq -cn --arg cmd "$cmd" '{completed:($cmd == "done")}' >"$WORK/body"
+    authed PATCH "/api/tasks/$1" bearer "$WORK/body"
+    emit '{"ok":true}' ;;
+  mcp-call)
+    [[ $# == 1 && -n $1 ]] || fail bad_request
+    cat >"$WORK/arguments"
+    jq -ecs --arg name "$1" 'select(length == 1 and (.[0] | type == "object")) |
+      {jsonrpc:"2.0",id:1,method:"tools/call",params:{name:$name,arguments:.[0]}}' "$WORK/arguments" >"$WORK/body" || fail bad_request
+    authed POST /api/mcp mcp "$WORK/body"
+    jq -e 'has("result") and (has("error") | not)' "$WORK/response" >/dev/null || fail server_error
+    emit "$(jq -c '{ok:true,result}' "$WORK/response")" ;;
+  *) fail bad_request '지원하지 않는 명령입니다.' ;;
+esac

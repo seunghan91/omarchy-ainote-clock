@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.seunghan91.ainote-clock",
+  "name": "ainote 시계",
+  "version": "0.1.0",
+  "author": "seunghan91",
+  "license": "MIT",
+  "description": "한국어 시계와 달력에서 ainote 할일을 확인하고 관리합니다.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {"barWidget": "BarWidget.qml"},
+  "barWidget": {
+    "displayName": "ainote 시계",
+    "description": "한국어 날짜와 시간, 월간 달력, ainote 할일",
+    "category": "Time",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {"taskIndicator": "none", "panelLayout": "vertical", "weekStart": "sunday"},
+    "schema": [
+      {"key": "taskIndicator", "type": "enum", "label": "바에 할일 표시", "options": ["none", "split", "total"], "defaultValue": "none"},
+      {"key": "panelLayout", "type": "enum", "label": "달력 패널 모양", "options": ["vertical", "horizontal"], "defaultValue": "vertical"},
+      {"key": "weekStart", "type": "enum", "label": "주 시작", "options": ["sunday", "monday"], "defaultValue": "sunday"}
+    ]
+  },
+  "omarchy": {"clonedFrom": "omarchy.clock"}
+}
