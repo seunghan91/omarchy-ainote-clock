@@ -80,6 +80,10 @@ var STRINGS = {
     "reconnect": "다시 연결",
     "login": "AI Note 로그인",
     "noLoginNeeded": "연결하지 않아도 시계·달력은 그대로 씁니다.",
+    "syncNote": "AI Note 웹·휴대폰 앱과 같은 계정으로 동기화됩니다.",
+    "appWeb": "웹",
+    "appIos": "iPhone",
+    "appAndroid": "Android",
     "loadingTasks": "할일을 불러오는 중…",
     "emptyOverdue": "밀린 할일이 없습니다.",
     "emptyToday": "오늘 할일이 없습니다.",
@@ -206,6 +210,10 @@ var STRINGS = {
     "reconnect": "Reconnect",
     "login": "Sign in to AI Note",
     "noLoginNeeded": "The clock and calendar work without signing in.",
+    "syncNote": "Syncs with the AI Note web and phone apps on the same account.",
+    "appWeb": "Web",
+    "appIos": "iPhone",
+    "appAndroid": "Android",
     "loadingTasks": "Loading tasks…",
     "emptyOverdue": "No overdue tasks.",
     "emptyToday": "No tasks today.",
@@ -290,6 +298,10 @@ var STRINGS = {
     "reconnect": "重新连接",
     "login": "登录 AI Note",
     "noLoginNeeded": "无需登录即可使用时钟和日历。",
+    "syncNote": "使用同一账号与 AI Note 网页版和手机 App 同步。",
+    "appWeb": "网页版",
+    "appIos": "iPhone",
+    "appAndroid": "Android",
     "loadingTasks": "正在加载待办…",
     "emptyOverdue": "没有逾期待办。",
     "emptyToday": "今天没有待办。",
@@ -374,6 +386,10 @@ var STRINGS = {
     "reconnect": "重新連線",
     "login": "登入 AI Note",
     "noLoginNeeded": "無須登入即可使用時鐘和行事曆。",
+    "syncNote": "使用同一帳號與 AI Note 網頁版和手機 App 同步。",
+    "appWeb": "網頁版",
+    "appIos": "iPhone",
+    "appAndroid": "Android",
     "loadingTasks": "正在載入待辦事項…",
     "emptyOverdue": "沒有逾期待辦事項。",
     "emptyToday": "今天沒有待辦事項。",
@@ -434,6 +450,12 @@ function format(template, values) {
   })
 }
 function text(lang, key, values) { return format(strings(lang)[key], values) }
+// AI Note on the web and in the stores; the same account syncs everywhere.
+var APP_LINKS = [
+  { key: "appWeb", url: "https://app.ainote.dev" },
+  { key: "appIos", url: "https://apps.apple.com/app/id6799343264" },
+  { key: "appAndroid", url: "https://play.google.com/store/apps/details?id=com.dcodelabs.ainote" }
+]
 function languageSetting(value) { return ["auto", "en", "ko", "zh-Hans", "zh-Hant"].indexOf(value) >= 0 ? value : "auto" }
 function chineseLanguage(tag) {
   if (/Hant/i.test(tag)) return "zh-Hant"

@@ -121,6 +121,21 @@ Ui.Panel {
     Label { id: actionText; anchors.centerIn: parent; text: action.text; color: Color.accent; font.bold: action.selected }
     MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: action.clicked() }
   }
+  component AppLinks: Column {
+    width: parent ? parent.width : 0
+    spacing: Style.space(6)
+    property bool centered: false
+    Label { width: parent.width; horizontalAlignment: parent.centered ? Text.AlignHCenter : Text.AlignLeft; text: root.strings.syncNote; opacity: 0.65; font.pixelSize: Style.font.bodySmall }
+    Flow {
+      width: parent.width
+      spacing: Style.space(6)
+      layoutDirection: Qt.LeftToRight
+      Repeater {
+        model: ClockText.APP_LINKS
+        Action { required property var modelData; text: root.strings[modelData.key] + " ↗"; onClicked: Quickshell.execDetached(["xdg-open", modelData.url]) }
+      }
+    }
+  }
   component Choice: Rectangle {
     id: choice
     property string title: ""
@@ -302,6 +317,7 @@ Ui.Panel {
                   onClicked: root.store.startLogin()
                 }
                 Label { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: root.strings.noLoginNeeded; opacity: 0.65 }
+                AppLinks { centered: true }
               }
               Column {
                 visible: root.store && root.store.loggedIn && root.store.connectionState !== "waiting"
@@ -442,6 +458,7 @@ Ui.Panel {
               Label { width: parent.width - logoutButton.width; text: root.store && root.store.loggedIn ? root.store.email : root.strings.disconnected }
               Action { id: logoutButton; visible: root.store && root.store.loggedIn; text: root.strings.logout; enabled: root.store && !root.store.authBusy && !root.store.mutating && !root.store.refreshing; onClicked: root.store.logout() }
             }
+            AppLinks {}
             Label { width: parent.width; text: root.strings.savedImmediately; opacity: 0.6; font.pixelSize: Style.font.bodySmall }
           }
           Rectangle { width: parent.width; height: 1; color: Util.alpha(root.contentForeground, 0.12) }
