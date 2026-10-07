@@ -25,6 +25,11 @@ Ui.Panel {
     return tr("offlineStatus", {detail: detail})
   }
   property bool settingsView: false
+  property bool phoneView: false
+  readonly property bool calendarHidden: settingsView || phoneView
+  // Hidden views keep keyboard focus otherwise; hand it back on every switch.
+  onSettingsViewChanged: if (keyCatcher) keyCatcher.forceActiveFocus()
+  onPhoneViewChanged: if (keyCatcher) keyCatcher.forceActiveFocus()
   // On today's page: "all" shows overdue as a collapsible group above today's tasks.
   property string taskFilter: "all"
   property bool overdueOpen: false
@@ -35,7 +40,7 @@ Ui.Panel {
   property string selectedDate: todayKey
   readonly property string monthKey: ClockText.ymd(viewDate).slice(0, 7)
   readonly property string weekStart: hostWidget ? hostWidget.weekStart : "sunday"
-  readonly property bool horizontal: hostWidget && hostWidget.panelLayout === "horizontal" && !settingsView
+  readonly property bool horizontal: hostWidget && hostWidget.panelLayout === "horizontal" && !calendarHidden
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
   // Use the palette red/blue: urgent is not red in every theme (monochrome themes map it to the foreground).
@@ -65,6 +70,7 @@ Ui.Panel {
   function open() {
     goToToday()
     settingsView = false
+    phoneView = false
     root.controller.show()
     Qt.callLater(function() { if (root.opened) root.setHoverSuppressed(true) })
   }
@@ -129,11 +135,8 @@ Ui.Panel {
     Flow {
       width: parent.width
       spacing: Style.space(6)
-      layoutDirection: Qt.LeftToRight
-      Repeater {
-        model: ClockText.APP_LINKS
-        Action { required property var modelData; text: root.strings[modelData.key] + " ↗"; onClicked: Quickshell.execDetached(["xdg-open", modelData.url]) }
-      }
+      Action { text: ClockText.STORE_APPS[0].glyph + " " + ClockText.STORE_APPS[1].glyph + "  " + root.strings.phoneSync; onClicked: { root.settingsView = false; root.phoneView = true } }
+      Action { text: root.strings.appWeb + " ↗"; onClicked: Quickshell.execDetached(["xdg-open", ClockText.WEB_URL]) }
     }
   }
   component Choice: Rectangle {
@@ -170,13 +173,13 @@ Ui.Panel {
     centerOnBar: true
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(root.horizontal ? 760 : 400))
-    contentHeight: panel.fittedContentHeight(Math.min(body.implicitHeight, Style.space(root.settingsView ? 650 : 700)))
+    contentHeight: panel.fittedContentHeight(Math.min(body.implicitHeight, Style.space(root.calendarHidden ? 650 : 700)))
     Ui.PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       blocked: addInput.activeFocus
-      onMoveRequested: function(dx, dy) { if (!root.settingsView) root.moveMonth(dx || dy * 12) }
-      onActivateRequested: if (!root.settingsView) root.goToToday()
+      onMoveRequested: function(dx, dy) { if (!root.calendarHidden) root.moveMonth(dx || dy * 12) }
+      onActivateRequested: if (!root.calendarHidden) root.goToToday()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       Flickable {
@@ -191,7 +194,7 @@ Ui.Panel {
           width: scroll.width
           spacing: Style.space(14)
           Grid {
-            visible: !root.settingsView
+            visible: !root.calendarHidden
             width: parent.width
             columns: root.horizontal ? 2 : 1
             columnSpacing: Style.space(24)
@@ -421,6 +424,7 @@ Ui.Panel {
           }
           Column {
             visible: root.settingsView
+            enabled: visible
             width: parent.width
             spacing: Style.space(6)
             Row {
@@ -461,12 +465,43 @@ Ui.Panel {
             AppLinks {}
             Label { width: parent.width; text: root.strings.savedImmediately; opacity: 0.6; font.pixelSize: Style.font.bodySmall }
           }
+          Column {
+            visible: root.phoneView
+            enabled: visible
+            width: parent.width
+            spacing: Style.space(12)
+            Row {
+              width: parent.width
+              Label { width: parent.width - phoneBack.width; text: root.strings.phoneSync; font.bold: true; font.pixelSize: Style.font.title }
+              Action { id: phoneBack; text: root.strings.backCalendar; onClicked: root.phoneView = false }
+            }
+            Label { width: parent.width; text: root.strings.phoneHint; opacity: 0.7 }
+            Row {
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: Style.space(24)
+              Repeater {
+                model: ClockText.STORE_APPS
+                Column {
+                  id: storeApp
+                  required property var modelData
+                  spacing: Style.space(8)
+                  // QR codes need a light quiet zone to scan, so the tile stays white in dark themes too.
+                  Rectangle {
+                    width: Style.space(150); height: width; radius: Style.space(8); color: "#ffffff"
+                    Image { anchors.fill: parent; anchors.margins: Style.space(8); source: Qt.resolvedUrl(storeApp.modelData.qr); fillMode: Image.PreserveAspectFit; smooth: false }
+                  }
+                  Label { width: Style.space(150); horizontalAlignment: Text.AlignHCenter; text: storeApp.modelData.glyph + "  " + root.strings[storeApp.modelData.key]; font.pixelSize: Style.font.title }
+                  Action { anchors.horizontalCenter: parent.horizontalCenter; text: root.strings.openStore; onClicked: Quickshell.execDetached(["xdg-open", storeApp.modelData.url]) }
+                }
+              }
+            }
+          }
           Rectangle { width: parent.width; height: 1; color: Util.alpha(root.contentForeground, 0.12) }
           Flow {
             width: parent.width
             spacing: Style.space(8)
             Label { text: root.tr("footer", {sync: root.store ? root.store.syncLabel : root.strings.notSynced}); height: Style.space(30); verticalAlignment: Text.AlignVCenter; font.pixelSize: Style.font.bodySmall; opacity: 0.6 }
-            Action { text: root.settingsView ? root.strings.calendar : root.strings.settings; onClicked: root.settingsView = !root.settingsView }
+            Action { text: root.settingsView ? root.strings.calendar : root.strings.settings; onClicked: { root.phoneView = false; root.settingsView = !root.settingsView } }
             Action { text: root.strings.openAINote; onClicked: Quickshell.execDetached(["xdg-open", "https://app.ainote.dev"]) }
           }
         }

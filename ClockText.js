@@ -84,6 +84,9 @@ var STRINGS = {
     "appWeb": "웹",
     "appIos": "iPhone",
     "appAndroid": "Android",
+    "phoneSync": "휴대폰 연동",
+    "phoneHint": "휴대폰 카메라로 QR을 찍으면 스토어가 열립니다.\n같은 AI Note 계정으로 로그인하면 할일이 동기화됩니다.",
+    "openStore": "스토어 열기 ↗",
     "loadingTasks": "할일을 불러오는 중…",
     "emptyOverdue": "밀린 할일이 없습니다.",
     "emptyToday": "오늘 할일이 없습니다.",
@@ -214,6 +217,9 @@ var STRINGS = {
     "appWeb": "Web",
     "appIos": "iPhone",
     "appAndroid": "Android",
+    "phoneSync": "Phone apps",
+    "phoneHint": "Scan with your phone camera to open the store.\nSign in with the same AI Note account to sync tasks.",
+    "openStore": "Open store ↗",
     "loadingTasks": "Loading tasks…",
     "emptyOverdue": "No overdue tasks.",
     "emptyToday": "No tasks today.",
@@ -302,6 +308,9 @@ var STRINGS = {
     "appWeb": "网页版",
     "appIos": "iPhone",
     "appAndroid": "Android",
+    "phoneSync": "手机 App",
+    "phoneHint": "用手机相机扫描二维码打开应用商店。\n使用同一 AI Note 账号登录即可同步待办。",
+    "openStore": "打开商店 ↗",
     "loadingTasks": "正在加载待办…",
     "emptyOverdue": "没有逾期待办。",
     "emptyToday": "今天没有待办。",
@@ -390,6 +399,9 @@ var STRINGS = {
     "appWeb": "網頁版",
     "appIos": "iPhone",
     "appAndroid": "Android",
+    "phoneSync": "手機 App",
+    "phoneHint": "用手機相機掃描 QR 碼開啟商店。\n使用同一 AI Note 帳號登入即可同步待辦事項。",
+    "openStore": "開啟商店 ↗",
     "loadingTasks": "正在載入待辦事項…",
     "emptyOverdue": "沒有逾期待辦事項。",
     "emptyToday": "今天沒有待辦事項。",
@@ -451,10 +463,11 @@ function format(template, values) {
 }
 function text(lang, key, values) { return format(strings(lang)[key], values) }
 // AI Note on the web and in the stores; the same account syncs everywhere.
-var APP_LINKS = [
-  { key: "appWeb", url: "https://app.ainote.dev" },
-  { key: "appIos", url: "https://apps.apple.com/app/id6799343264" },
-  { key: "appAndroid", url: "https://play.google.com/store/apps/details?id=com.dcodelabs.ainote" }
+// Store links never change, so their QR codes ship pre-rendered in assets/.
+var WEB_URL = "https://app.ainote.dev"
+var STORE_APPS = [
+  { key: "appIos", glyph: "\uf179", url: "https://apps.apple.com/app/id6799343264", qr: "assets/qr-ios.png" },
+  { key: "appAndroid", glyph: "\udb80\udebc", url: "https://play.google.com/store/apps/details?id=com.dcodelabs.ainote", qr: "assets/qr-android.png" }
 ]
 function languageSetting(value) { return ["auto", "en", "ko", "zh-Hans", "zh-Hant"].indexOf(value) >= 0 ? value : "auto" }
 function chineseLanguage(tag) {

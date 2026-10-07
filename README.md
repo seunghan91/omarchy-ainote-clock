@@ -7,7 +7,7 @@ AI Note is a to-do and calendar service on the web ([app.ainote.dev](https://app
 - Today's and overdue tasks, a dot on every day that has tasks, check to complete, type to add
 - Four UI languages: English, Korean, Simplified Chinese, Traditional Chinese (auto-detected, or set `language`)
 - The clock and calendar work without an account; sign in from the panel when you want your tasks
-- The panel's sign-in screen and Settings link to the web app and the iPhone and Android apps
+- **Phone apps** button on the sign-in screen and in Settings: App Store and Google Play QR codes to scan with your phone, plus a link to the web app
 
 ![AI Note Clock](preview.png)
 
@@ -48,7 +48,7 @@ AI Note 웹(app.ainote.dev)과 iOS·Android 앱과 같은 계정을 쓴다.
 - 달력: 4개 언어 요일, 일요일 빨강·토요일 파랑, 날짜별 할일 점(밀린 할일은 빨간 점).
 - 할일: 오늘을 고르면 `전체 · 오늘 · 밀린` 필터, 밀린 할일은 접고 펼친다. 체크로 완료, 입력칸에 쓰고 Enter 로 추가.
 - 로그인: 패널의 「AI Note 로그인」 → 브라우저에서 코드 승인(AI Note 기기 인증). 할일 API 토큰과 MCP 키를 함께 받는다.
-- 앱 안내: 로그인 전 화면과 설정에 웹·iPhone·Android 앱 링크(같은 계정으로 동기화).
+- 앱 안내: 로그인 전 화면과 설정의 「휴대폰 연동」 → App Store·Google Play QR(휴대폰 카메라로 찍으면 스토어), 웹 링크. 같은 계정으로 동기화.
 
 ## 설치
 
