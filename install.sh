@@ -82,7 +82,8 @@ install_plugin() {
   jq -e --arg id "$ID" '.id == $id' "$stage/manifest.json" >/dev/null || fail "staged manifest is not $ID"
 
   rm -rf "$backup"
-  [[ -d $PLUGIN_DIR ]] && mv "$PLUGIN_DIR" "$backup"
+  local upgrade=false
+  [[ -d $PLUGIN_DIR ]] && upgrade=true && mv "$PLUGIN_DIR" "$backup"
   mv "$stage" "$PLUGIN_DIR"
 
   if ! { wait_for_catalog && omarchy-plugin-enable "$ID" && wait_for_layout "$ID" present; }; then
@@ -100,7 +101,13 @@ install_plugin() {
     commit "$NORMALIZE | .bar.centerAnchor = \$id" --arg id "$ID"
   fi
 
-  echo "ainote 시계를 켰습니다. 시계를 눌러 ainote 에 로그인하세요."
+  # Hot reload keeps the previous version's cached components, so an upgrade
+  # only shows up after a shell restart (the screen is known to be unlocked).
+  if [[ $upgrade == true ]]; then
+    omarchy-restart-shell >/dev/null 2>&1 || echo "셸을 다시 시작해 주세요: omarchy-restart-shell"
+  fi
+
+  echo "AI Note Clock 을 켰습니다. 시계를 눌러 AI Note 에 로그인하세요."
 }
 
 uninstall_plugin() {
